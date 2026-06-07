@@ -100,6 +100,11 @@ Discord must be installed in its default location. The Vencord installer auto-de
 
 Discord updates silently in the background. Each update wipes Vencord's patches. Instead of manually digging up the installer every time, this script handles it automatically — set it once and forget about it.
 
+## Credits
+
+- [DrTankHead](https://www.reddit.com/user/DrTankHead) — UNIX port idea and `--src` flag concept
+- [Vencord](https://github.com/Vendicated/Vencord) & [VencordInstaller](https://github.com/Vencord/Installer) — the actual mod this wraps around
+
 ## License
 
 MIT
