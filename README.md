@@ -1,6 +1,6 @@
 # Vencord Auto-Patcher
 
-Downloads the latest Vencord installer, patches Discord, and launches it — so you never deal with a broken client mod after an update again.
+Downloads the latest Vencord installer, patches Discord, and launches it so you never deal with a broken client mod after an update again.
 
 Works on **Windows**, **Linux**, and **macOS**.
 
