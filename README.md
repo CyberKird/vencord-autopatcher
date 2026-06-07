@@ -15,25 +15,29 @@ Works on **Windows**, **Linux**, and **macOS**.
 
 ### Windows
 
-Download `Vencord-AutoPatcher.ps1`, then choose a startup method:
+**One-click (recommended):**
 
-**Startup folder (simplest)**
+1. Download [`setup.bat`](https://github.com/CyberKird/vencord-autopatcher/releases/latest/download/setup.bat)
+2. Double-click it
+3. Done. Restart to test, or let it run now when asked.
 
-1. `Win+R` → `shell:startup`
-2. Right-click → **New → Shortcut**
-3. Location:
-   ```
-   powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\path\to\Vencord-AutoPatcher.ps1"
-   ```
+The script will live in `C:\Scripts\` and run silently at every login.
 
-**Task Scheduler (more control)**
+---
 
-1. `Win+R` → `taskschd.msc`
-2. **Create Task** → Trigger: *At log on*
-3. Action: `powershell.exe` with arguments:
+**Manual setup** (if you prefer to do it yourself):
+
+1. Download `Vencord-AutoPatcher.ps1`
+2. Move it somewhere permanent, e.g. `C:\Scripts\Vencord-AutoPatcher.ps1`
+3. `Win+R` → `shell:startup`
+4. Right-click → **New → Shortcut**
+5. Paste this:
    ```
-   -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\path\to\Vencord-AutoPatcher.ps1"
+   powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\Scripts\Vencord-AutoPatcher.ps1"
    ```
+6. Click Next, name it whatever, Finish.
+
+**Verify it works** — double-click the shortcut you just created. Discord should launch with Vencord patched. No output means it succeeded (it runs silently).
 
 ### Linux
 
@@ -70,8 +74,9 @@ chmod +x vencord-autopatcher.sh
 
 ```powershell
 # Windows (PowerShell)
-.\Vencord-AutoPatcher.ps1 -Branch canary
-.\Vencord-AutoPatcher.ps1 -NoLaunch
+C:\Scripts\Vencord-AutoPatcher.ps1
+C:\Scripts\Vencord-AutoPatcher.ps1 -Branch canary
+C:\Scripts\Vencord-AutoPatcher.ps1 -NoLaunch
 ```
 
 ```bash
@@ -85,6 +90,12 @@ chmod +x vencord-autopatcher.sh
 | Branch | `-Branch` | `-b` | `stable`, `canary`, or `ptb` | `stable` |
 | Skip launch | `-NoLaunch` | `-n` | Patch only, don't start Discord | off |
 | Help | *(Get-Help)* | `-h` | Show usage | — |
+
+## Uninstall
+
+- **Windows**: `Win+R` → `shell:startup` → delete the shortcut. Optionally delete `C:\Scripts\Vencord-AutoPatcher.ps1`.
+- **Linux**: `rm ~/.config/autostart/vencord-autopatcher.desktop`
+- **macOS**: System Preferences → Users & Groups → Login Items → select and remove
 
 ## Requirements
 
