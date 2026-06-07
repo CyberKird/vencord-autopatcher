@@ -1,67 +1,105 @@
 # Vencord Auto-Patcher
 
-Automatically re-patches Discord with Vencord every time your PC starts — so Discord updates never break your client mod again.
+Downloads the latest Vencord installer, patches Discord, and launches it — so you never deal with a broken client mod after an update again.
+
+Works on **Windows**, **Linux**, and **macOS**.
 
 ## How it works
 
-1. Downloads the **latest** `VencordInstallerCli.exe` directly from the [official Vencord GitHub](https://github.com/Vencord/Installer)
-2. Runs the installer to patch your local Discord
-3. Cleans up the downloaded installer (no leftover files)
+1. Fetches the **latest** Vencord installer binary from the [official releases](https://github.com/Vencord/Installer)
+2. Runs it to patch your local Discord installation
+3. Cleans up the downloaded binary (no leftovers)
 4. Launches Discord
 
-## One-time setup
+## Quick start
 
-### Option A: Startup folder (simplest)
+### Windows
 
-1. Download `Vencord-AutoPatcher.ps1`
-2. Press `Win+R`, type `shell:startup`, hit Enter
-3. Right-click → **New → Shortcut**
-4. Location:  
+Download `Vencord-AutoPatcher.ps1`, then choose a startup method:
+
+**Startup folder (simplest)**
+
+1. `Win+R` → `shell:startup`
+2. Right-click → **New → Shortcut**
+3. Location:
    ```
-   powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\PATH\TO\Vencord-AutoPatcher.ps1"
+   powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\path\to\Vencord-AutoPatcher.ps1"
    ```
-5. Name it whatever you want. Done.
 
-### Option B: Task Scheduler (more control)
+**Task Scheduler (more control)**
 
-1. Press `Win+R`, type `taskschd.msc`
-2. **Create Task** → tab **General**: name it `Vencord AutoPatcher`
-3. Tab **Triggers** → New → **At log on**
-4. Tab **Actions** → New → Program: `powershell.exe`, Arguments:
+1. `Win+R` → `taskschd.msc`
+2. **Create Task** → Trigger: *At log on*
+3. Action: `powershell.exe` with arguments:
    ```
-   -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\PATH\TO\Vencord-AutoPatcher.ps1"
+   -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\path\to\Vencord-AutoPatcher.ps1"
    ```
-5. Tab **Conditions** → uncheck *Start only if on AC power*
-6. OK. Done.
 
-## Usage (manual run)
+### Linux
 
-```powershell
-.\Vencord-AutoPatcher.ps1
+```bash
+# Run once to test
+chmod +x vencord-autopatcher.sh
+./vencord-autopatcher.sh
+
+# Set up auto-start on login
+cp vencord-autopatcher.sh ~/.local/bin/
+cat > ~/.config/autostart/vencord-autopatcher.desktop << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=Vencord Auto-Patcher
+Exec=bash -c '~/.local/bin/vencord-autopatcher.sh'
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+EOF
 ```
 
-### Options
+### macOS
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `-Branch` | Vencord branch (`stable`, `canary`, `ptb`) | `stable` |
-| `-NoLaunch` | Patch Discord but don't launch it | (off) |
+```bash
+# Run once to test
+chmod +x vencord-autopatcher.sh
+./vencord-autopatcher.sh
+
+# Set up auto-start at login
+# System Preferences → Users & Groups → Login Items → + → select vencord-autopatcher.sh
+```
+
+## Usage
 
 ```powershell
+# Windows (PowerShell)
 .\Vencord-AutoPatcher.ps1 -Branch canary
 .\Vencord-AutoPatcher.ps1 -NoLaunch
 ```
 
+```bash
+# UNIX (Linux / macOS)
+./vencord-autopatcher.sh -b canary
+./vencord-autopatcher.sh -n
+```
+
+| Flag | Windows | UNIX | Description | Default |
+|------|---------|------|-------------|---------|
+| Branch | `-Branch` | `-b` | `stable`, `canary`, or `ptb` | `stable` |
+| Skip launch | `-NoLaunch` | `-n` | Patch only, don't start Discord | off |
+| Help | *(Get-Help)* | `-h` | Show usage | — |
+
 ## Requirements
 
-- Windows 10/11
-- PowerShell 5.1+ (built into Windows)
-- Discord installed in the default location (`%LOCALAPPDATA%\Discord`)
+| Platform | Dependencies |
+|----------|-------------|
+| **Windows** | PowerShell 5.1+ (built-in) |
+| **Linux** | bash 4+, `curl` |
+| **macOS** | bash, `curl`, `unzip` (all built-in) |
+
+Discord must be installed in its default location. The Vencord installer auto-detects alternative installs (Flatpak, Snap, etc.).
 
 ## Why?
 
-Discord updates silently in the background. When it does, Vencord's patches get wiped and you have to manually re-run the installer. This script automates that — just set it once and forget about it.
+Discord updates silently in the background. Each update wipes Vencord's patches. Instead of manually digging up the installer every time, this script handles it automatically — set it once and forget about it.
 
 ## License
 
-MIT — do whatever you want.
+MIT
