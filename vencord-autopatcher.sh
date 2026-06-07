@@ -25,6 +25,7 @@ set -euo pipefail
 readonly REPO_URL="https://github.com/Vencord/Installer/releases/latest/download"
 readonly CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/vencord-autopatcher"
 readonly SCRIPT_NAME="${0##*/}"
+readonly LOG_FILE="$CACHE_DIR/autopatcher.log"
 
 # Valid branches accepted by the Vencord installer
 readonly VALID_BRANCHES="stable canary ptb"
@@ -39,7 +40,10 @@ ok()   { printf '\033[32m>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m!\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[31mx\033[0m %s\n' "$*" >&2; exit 1; }
 
-step() { printf '\n\033[36m[%s]\033[0m \033[1m%s\033[0m\n' "$1" "$2"; }
+step() {
+    printf '\n\033[36m[%s]\033[0m \033[1m%s\033[0m\n' "$1" "$2"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$1] $2" >> "$LOG_FILE"
+}
 
 cleanup() {
     if [[ -n "${INSTALLER_EXEC:-}" ]]; then
@@ -128,6 +132,9 @@ fi
 
 mkdir -p "$CACHE_DIR"
 
+echo "=== Vencord Auto-Patcher $(date) ===" > "$LOG_FILE"
+echo "OS: $OS, Branch: $BRANCH, NoLaunch: $NO_LAUNCH" >> "$LOG_FILE"
+
 # ---------------------------------------------------------------------------
 # Step 1 — Download
 # ---------------------------------------------------------------------------
@@ -156,8 +163,8 @@ fi
 step "3/5" "Patching Discord (branch: $BRANCH)..."
 
 set +e
-"$INSTALLER_EXEC" -install -branch "$BRANCH"
-PATCH_EXIT=$?
+"$INSTALLER_EXEC" -install -branch "$BRANCH" 2>&1 | tee -a "$LOG_FILE"
+PATCH_EXIT=${PIPESTATUS[0]}
 set -e
 
 if [[ $PATCH_EXIT -ne 0 ]]; then

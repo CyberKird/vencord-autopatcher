@@ -11,12 +11,18 @@
     4. Launches Discord
 
     Set it to run at Windows startup via Task Scheduler or Startup folder.
+    Use setup.bat for automatic one-click setup.
+
+    Logs are written to %TEMP%\VencordAutoPatcher.log
 
 .PARAMETER Branch
     Vencord branch to install. Default: 'stable'. Other options: 'canary', 'ptb'.
 
 .PARAMETER NoLaunch
     Skip launching Discord after patching.
+
+.PARAMETER Help
+    Show this help text.
 
 .EXAMPLE
     .\Vencord-AutoPatcher.ps1
@@ -32,44 +38,86 @@
 
 param(
     [string]$Branch = "stable",
-    [switch]$NoLaunch
+    [switch]$NoLaunch,
+    [switch]$Help
 )
 
-$ErrorActionPreference = "Stop"
+if ($Help) {
+    Get-Help -Detailed $PSCommandPath
+    exit 0
+}
 
+$ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
+
+$logFile = Join-Path $env:TEMP "VencordAutoPatcher.log"
 $installerDir = "$env:LOCALAPPDATA\VencordAutoPatcher"
 $installerPath = "$installerDir\VencordInstallerCli.exe"
-$discordUpdateExe = "$env:LOCALAPPDATA\Discord\Update.exe"
 $installerUrl = "https://github.com/Vencord/Installer/releases/latest/download/VencordInstallerCli.exe"
 
-New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
+# common Discord paths
+$discordPaths = @(
+    "$env:LOCALAPPDATA\Discord\Update.exe",
+    "$env:LOCALAPPDATA\DiscordPTB\Update.exe",
+    "$env:LOCALAPPDATA\DiscordCanary\Update.exe"
+)
+
+function Write-Log {
+    param([string]$Message)
+    $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    "$stamp  $Message" | Out-File -Append -Encoding utf8 $logFile
+}
+
+function Write-Step {
+    param([string]$Num, [string]$Label)
+    $msg = "[$Num] $Label"
+    Write-Host $msg
+    Write-Log $msg
+}
+
+Write-Log "=== Vencord Auto-Patcher started ==="
+Write-Log "Branch: $Branch, NoLaunch: $NoLaunch"
 
 try {
-    Write-Host "[1/4] Downloading latest Vencord installer..."
+    New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
+
+    Write-Step "1/4" "Downloading latest Vencord installer..."
     Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
 
-    Write-Host "[2/4] Patching Discord ($Branch branch)..."
-    & $installerPath -install -branch $Branch
+    Write-Step "2/4" "Patching Discord ($Branch branch)..."
+    & $installerPath -install -branch $Branch 2>&1 | ForEach-Object {
+        $line = "$_"
+        Write-Host $line
+        Write-Log $line
+    }
+    if ($LASTEXITCODE -ne 0) { throw "Installer exited with code $LASTEXITCODE" }
 
-    Write-Host "[3/4] Cleaning up..."
+    Write-Step "3/4" "Cleaning up..."
     Remove-Item -Force $installerPath -ErrorAction SilentlyContinue
 
-    if (-not $NoLaunch) {
-        Write-Host "[4/4] Launching Discord..."
-        if (Test-Path $discordUpdateExe) {
-            Start-Process -FilePath $discordUpdateExe -ArgumentList "--processStart", "Discord.exe"
-        }
-        else {
-            Write-Warning "Discord not found at $discordUpdateExe"
-        }
+    if ($NoLaunch) {
+        Write-Step "4/4" "Skipping Discord launch (-NoLaunch set)"
     }
     else {
-        Write-Host "[4/4] Skipping Discord launch (-NoLaunch was set)"
+        Write-Step "4/4" "Launching Discord..."
+        $found = $false
+        foreach ($p in $discordPaths) {
+            if (Test-Path $p) {
+                Start-Process -FilePath $p -ArgumentList "--processStart", (Split-Path $p -Leaf)
+                $found = $true
+                break
+            }
+        }
+        if (-not $found) {
+            Write-Warning "Discord Update.exe not found. Is Discord installed?"
+            Write-Log "WARN: Discord Update.exe not found in any checked path"
+        }
     }
 
-    Write-Host "Done."
+    Write-Log "=== Done ==="
 }
 catch {
+    Write-Log "ERROR: $_"
     Remove-Item -Force $installerPath -ErrorAction SilentlyContinue
     throw
 }

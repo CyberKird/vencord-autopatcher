@@ -1,5 +1,9 @@
 # Vencord Auto-Patcher
 
+[![release](https://img.shields.io/github/v/release/CyberKird/vencord-autopatcher?label=release&color=22c55e)](https://github.com/CyberKird/vencord-autopatcher/releases/latest)
+[![platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)](https://github.com/CyberKird/vencord-autopatcher)
+[![license](https://img.shields.io/badge/license-MIT-9ca3af)](LICENSE)
+
 Downloads the latest Vencord installer, patches Discord, and launches it so you never deal with a broken client mod after an update again.
 
 Works on **Windows**, **Linux**, and **macOS**.
@@ -38,6 +42,10 @@ The script will live in `C:\Scripts\` and run silently at every login.
 6. Click Next, name it whatever, Finish.
 
 **Verify it works** — double-click the shortcut you just created. Discord should launch with Vencord patched. No output means it succeeded (it runs silently).
+
+If something goes wrong, check the log:
+- **Windows**: `%TEMP%\VencordAutoPatcher.log`
+- **Linux / macOS**: `~/.cache/vencord-autopatcher/autopatcher.log`
 
 ### Linux
 
