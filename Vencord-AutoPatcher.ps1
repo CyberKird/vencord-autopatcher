@@ -85,10 +85,14 @@ try {
     Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
 
     Write-Step "2/4" "Patching Discord ($Branch branch)..."
-    & $installerPath -install -branch $Branch 2>&1 | ForEach-Object {
-        $line = "$_"
-        Write-Host $line
-        Write-Log $line
+    $saveEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $output = & $installerPath -install -branch $Branch 2>&1
+    $ErrorActionPreference = $saveEAP
+    foreach ($line in $output) {
+        $text = if ($line -is [System.Management.Automation.ErrorRecord]) { $line.ToString() } else { "$line" }
+        Write-Host $text
+        Write-Log $text
     }
     if ($LASTEXITCODE -ne 0) { throw "Installer exited with code $LASTEXITCODE" }
 
