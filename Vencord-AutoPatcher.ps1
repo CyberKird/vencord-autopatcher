@@ -100,11 +100,20 @@ try {
     }
     else {
         Write-Step "4/4" "Launching Discord..."
+        $discordExeMap = @{
+            "Discord"       = "Discord.exe"
+            "DiscordPTB"    = "DiscordPTB.exe"
+            "DiscordCanary" = "DiscordCanary.exe"
+        }
         $found = $false
         foreach ($p in $discordPaths) {
             if (Test-Path $p) {
-                Start-Process -FilePath $p -ArgumentList "--processStart", (Split-Path $p -Leaf)
-                $found = $true
+                $dirName = Split-Path (Split-Path $p -Parent) -Leaf
+                $exeName = $discordExeMap[$dirName]
+                if ($exeName) {
+                    Start-Process -FilePath $p -ArgumentList "--processStart", $exeName
+                    $found = $true
+                }
                 break
             }
         }

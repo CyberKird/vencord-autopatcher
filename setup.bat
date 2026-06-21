@@ -5,15 +5,16 @@ echo   Vencord Auto-Patcher - One-Time Setup
 echo ==========================================
 echo.
 echo This will:
-echo   1. Download the latest script to C:\Scripts
+echo   1. Download the latest script to %LOCALAPPDATA%\VencordAutoPatcher
 echo   2. Add it to your Windows startup
 echo   3. Optionally run it now
 echo.
 
-mkdir C:\Scripts 2>nul
+set SCRIPT_DIR=%LOCALAPPDATA%\VencordAutoPatcher
+mkdir "%SCRIPT_DIR%" 2>nul
 
 echo [1/2] Downloading latest script...
-powershell -Command "Invoke-WebRequest -Uri 'https://github.com/CyberKird/vencord-autopatcher/releases/latest/download/Vencord-AutoPatcher.ps1' -OutFile 'C:\Scripts\Vencord-AutoPatcher.ps1'"
+powershell -Command "Invoke-WebRequest -Uri 'https://github.com/CyberKird/vencord-autopatcher/releases/latest/download/Vencord-AutoPatcher.ps1' -OutFile '%SCRIPT_DIR%\Vencord-AutoPatcher.ps1'"
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Could not download the script. Check your internet connection.
     pause
@@ -22,7 +23,7 @@ if %ERRORLEVEL% neq 0 (
 echo       Done.
 
 echo [2/2] Adding to startup...
-powershell -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut([Environment]::GetFolderPath('Startup') + '\Vencord-AutoPatcher.lnk'); $sc.TargetPath = 'powershell.exe'; $sc.Arguments = '-WindowStyle Hidden -ExecutionPolicy Bypass -File \"C:\Scripts\Vencord-AutoPatcher.ps1\"'; $sc.Save()"
+powershell -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut([Environment]::GetFolderPath('Startup') + '\Vencord-AutoPatcher.lnk'); $sc.TargetPath = 'powershell.exe'; $sc.Arguments = '-WindowStyle Hidden -ExecutionPolicy Bypass -File \"%LOCALAPPDATA%\VencordAutoPatcher\Vencord-AutoPatcher.ps1\"'; $sc.Save()"
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Could not create startup shortcut. Try running as Administrator.
     pause
@@ -49,5 +50,5 @@ if errorlevel 2 (
     exit
 )
 echo.
-powershell -ExecutionPolicy Bypass -File "C:\Scripts\Vencord-AutoPatcher.ps1"
+powershell -ExecutionPolicy Bypass -File "%SCRIPT_DIR%\Vencord-AutoPatcher.ps1"
 pause
