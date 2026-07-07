@@ -37,6 +37,7 @@
 #>
 
 param(
+    [ValidateSet("stable", "canary", "ptb")]
     [string]$Branch = "stable",
     [switch]$NoLaunch,
     [switch]$Help
@@ -55,12 +56,12 @@ $installerDir = "$env:LOCALAPPDATA\VencordAutoPatcher"
 $installerPath = "$installerDir\VencordInstallerCli.exe"
 $installerUrl = "https://github.com/Vencord/Installer/releases/latest/download/VencordInstallerCli.exe"
 
-# common Discord paths
-$discordPaths = @(
-    "$env:LOCALAPPDATA\Discord\Update.exe",
-    "$env:LOCALAPPDATA\DiscordPTB\Update.exe",
-    "$env:LOCALAPPDATA\DiscordCanary\Update.exe"
-)
+# branch -> install folder under %LOCALAPPDATA%
+$branchDirMap = @{
+    "stable" = "Discord"
+    "ptb"    = "DiscordPTB"
+    "canary" = "DiscordCanary"
+}
 
 function Write-Log {
     param([string]$Message)
@@ -103,27 +104,15 @@ try {
         Write-Step "4/4" "Skipping Discord launch (-NoLaunch set)"
     }
     else {
-        Write-Step "4/4" "Launching Discord..."
-        $discordExeMap = @{
-            "Discord"       = "Discord.exe"
-            "DiscordPTB"    = "DiscordPTB.exe"
-            "DiscordCanary" = "DiscordCanary.exe"
+        Write-Step "4/4" "Launching Discord ($Branch)..."
+        $dirName = $branchDirMap[$Branch]
+        $updater = "$env:LOCALAPPDATA\$dirName\Update.exe"
+        if (Test-Path $updater) {
+            Start-Process -FilePath $updater -ArgumentList "--processStart", "$dirName.exe"
         }
-        $found = $false
-        foreach ($p in $discordPaths) {
-            if (Test-Path $p) {
-                $dirName = Split-Path (Split-Path $p -Parent) -Leaf
-                $exeName = $discordExeMap[$dirName]
-                if ($exeName) {
-                    Start-Process -FilePath $p -ArgumentList "--processStart", $exeName
-                    $found = $true
-                }
-                break
-            }
-        }
-        if (-not $found) {
-            Write-Warning "Discord Update.exe not found. Is Discord installed?"
-            Write-Log "WARN: Discord Update.exe not found in any checked path"
+        else {
+            Write-Warning "$dirName Update.exe not found. Is that Discord branch installed?"
+            Write-Log "WARN: $updater not found"
         }
     }
 

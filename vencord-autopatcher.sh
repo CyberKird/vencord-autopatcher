@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Vencord Auto-Patcher — UNIX edition (Linux / macOS)
+# Vencord Auto-Patcher - UNIX edition (Linux / macOS)
 #
 # Downloads the latest Vencord installer for your platform, patches Discord,
 # removes the installer, and optionally launches Discord.
@@ -47,14 +47,15 @@ step() {
 
 cleanup() {
     if [[ -n "${INSTALLER_EXEC:-}" ]]; then
-        rm -rf "${INSTALLER_EXEC}" "${CACHE_DIR:?}/${INSTALLER_NAME}" 2>/dev/null || true
+        rm -rf "${INSTALLER_EXEC}" "${CACHE_DIR:?}/${INSTALLER_NAME}" \
+            "${CACHE_DIR:?}/VencordInstaller.app" 2>/dev/null || true
     fi
 }
 trap cleanup EXIT
 
 usage() {
     cat <<EOF
-$(bold "Vencord Auto-Patcher — UNIX")
+$(bold "Vencord Auto-Patcher - UNIX")
 
 Usage:  ./$SCRIPT_NAME [-b branch] [-n] [-h]
 
@@ -104,14 +105,23 @@ case "$OS" in
         INSTALLER_URL="$REPO_URL/$INSTALLER_NAME"
         INSTALLER_EXEC="$CACHE_DIR/$INSTALLER_NAME"
         IS_ARCHIVE=0
-        DISCORD_CMD="discord"
+        case "$BRANCH" in
+            stable) DISCORD_CMD="discord" ;;
+            canary) DISCORD_CMD="discord-canary" ;;
+            ptb)    DISCORD_CMD="discord-ptb" ;;
+        esac
         ;;
     Darwin)
         INSTALLER_NAME="VencordInstaller.MacOS.zip"
         INSTALLER_URL="$REPO_URL/$INSTALLER_NAME"
         INSTALLER_EXEC="$CACHE_DIR/VencordInstaller.app/Contents/MacOS/VencordInstaller"
         IS_ARCHIVE=1
-        DISCORD_CMD="/Applications/Discord.app/Contents/MacOS/Discord"
+        case "$BRANCH" in
+            stable) DISCORD_APP="Discord" ;;
+            canary) DISCORD_APP="Discord Canary" ;;
+            ptb)    DISCORD_APP="Discord PTB" ;;
+        esac
+        DISCORD_CMD="/Applications/$DISCORD_APP.app/Contents/MacOS/$DISCORD_APP"
         ;;
     *)
         die "Unsupported OS: $OS (only Linux and macOS are supported)"
@@ -126,8 +136,7 @@ command -v curl >/dev/null 2>&1 || die "curl is required but not found"
 
 if [[ $NO_LAUNCH -eq 0 ]]; then
     command -v "$DISCORD_CMD" >/dev/null 2>&1 \
-        || command -v discord >/dev/null 2>&1 \
-        || warn "Discord not found in PATH; will attempt launch anyway"
+        || warn "Discord ($BRANCH) not found; patching will continue but launch may fail"
 fi
 
 mkdir -p "$CACHE_DIR"
@@ -136,14 +145,14 @@ echo "=== Vencord Auto-Patcher $(date) ===" > "$LOG_FILE"
 echo "OS: $OS, Branch: $BRANCH, NoLaunch: $NO_LAUNCH" >> "$LOG_FILE"
 
 # ---------------------------------------------------------------------------
-# Step 1 — Download
+# Step 1 - Download
 # ---------------------------------------------------------------------------
 
 step "1/5" "Downloading latest Vencord installer for $OS..."
 curl -fsSL --progress-bar -o "$CACHE_DIR/$INSTALLER_NAME" "$INSTALLER_URL"
 
 # ---------------------------------------------------------------------------
-# Step 2 — Prepare (extract on macOS, set executable on Linux)
+# Step 2 - Prepare (extract on macOS, set executable on Linux)
 # ---------------------------------------------------------------------------
 
 if [[ $IS_ARCHIVE -eq 1 ]]; then
@@ -157,7 +166,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 3 — Patch
+# Step 3 - Patch
 # ---------------------------------------------------------------------------
 
 step "3/5" "Patching Discord (branch: $BRANCH)..."
@@ -172,30 +181,27 @@ if [[ $PATCH_EXIT -ne 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 4 — Cleanup
+# Step 4 - Cleanup
 # ---------------------------------------------------------------------------
 
 step "4/5" "Removing installer..."
-rm -rf "$CACHE_DIR/$INSTALLER_NAME" "$INSTALLER_EXEC" 2>/dev/null || true
+rm -rf "$CACHE_DIR/$INSTALLER_NAME" "$INSTALLER_EXEC" \
+    "$CACHE_DIR/VencordInstaller.app" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# Step 5 — Launch (optional)
+# Step 5 - Launch (optional)
 # ---------------------------------------------------------------------------
 
 if [[ $NO_LAUNCH -eq 1 ]]; then
     step "5/5" "Skipping launch (-n flag set)"
 else
-    step "5/5" "Launching Discord..."
+    step "5/5" "Launching Discord ($BRANCH)..."
     if command -v "$DISCORD_CMD" >/dev/null 2>&1; then
         nohup "$DISCORD_CMD" >/dev/null 2>&1 &
-    elif command -v discord >/dev/null 2>&1; then
-        nohup discord >/dev/null 2>&1 &
-    elif [[ -x "$DISCORD_CMD" ]]; then
-        nohup "$DISCORD_CMD" >/dev/null 2>&1 &
     else
-        warn "Could not find Discord. Install it or launch it manually."
+        warn "Could not find Discord ($BRANCH). Install it or launch it manually."
     fi
 fi
 
 echo
-ok "Done — Discord is patched with Vencord ($BRANCH)."
+ok "Done. Discord is patched with Vencord ($BRANCH)."
