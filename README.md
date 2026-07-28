@@ -104,7 +104,7 @@ chmod +x vencord-autopatcher.sh
 
 ## Self-update
 
-On every run the patcher checks its own [latest release](https://github.com/CyberKird/vencord-autopatcher/releases/latest). If a newer version exists it replaces itself on disk and restarts with the same flags — so you set it up once and never download it again.
+On every run the patcher checks its own [latest release](https://github.com/CyberKird/vencord-autopatcher/releases/latest). If a newer version exists it replaces itself on disk and restarts with the same flags, so you set it up once and never download it again.
 
 Before overwriting itself it syntax-checks the download, so a half-finished download or a GitHub error page can't leave you with a broken script. If GitHub is unreachable the check is skipped silently and Discord still gets patched. Pass `-NoSelfUpdate` / `-u` to turn it off.
 
