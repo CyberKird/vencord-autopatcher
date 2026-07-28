@@ -10,10 +10,11 @@ Runs on **Windows**, **Linux**, and **macOS**.
 
 ## How it works
 
-1. Pulls the latest Vencord installer from the [official releases](https://github.com/Vencord/Installer)
-2. Runs it against your local Discord install
-3. Deletes the installer binary after patching
-4. Starts Discord
+1. Updates itself if a newer patcher release exists, then restarts
+2. Pulls the latest Vencord installer from the [official releases](https://github.com/Vencord/Installer)
+3. Runs it against your local Discord install
+4. Deletes the installer binary after patching
+5. Starts Discord
 
 ## Quick start
 
@@ -97,7 +98,15 @@ chmod +x vencord-autopatcher.sh
 |------|---------|------|-------------|---------|
 | Branch | `-Branch` | `-b` | `stable`, `canary`, or `ptb` | `stable` |
 | Skip launch | `-NoLaunch` | `-n` | Patch only, don't start Discord | off |
-| Help | *(Get-Help)* | `-h` | Show usage | (none) |
+| Skip self-update | `-NoSelfUpdate` | `-u` | Don't check for a newer patcher | off |
+| Version | `-Version` | `-V` | Print the patcher version | (none) |
+| Help | `-Help` | `-h` | Show usage | (none) |
+
+## Self-update
+
+On every run the patcher checks its own [latest release](https://github.com/CyberKird/vencord-autopatcher/releases/latest). If a newer version exists it replaces itself on disk and restarts with the same flags — so you set it up once and never download it again.
+
+Before overwriting itself it syntax-checks the download, so a half-finished download or a GitHub error page can't leave you with a broken script. If GitHub is unreachable the check is skipped silently and Discord still gets patched. Pass `-NoSelfUpdate` / `-u` to turn it off.
 
 ## Uninstall
 
