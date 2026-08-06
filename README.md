@@ -10,11 +10,11 @@ Runs on **Windows**, **Linux**, and **macOS**.
 
 ## How it works
 
-1. Updates itself if a newer patcher release exists, then restarts
-2. Pulls the latest Vencord installer from the [official releases](https://github.com/Vencord/Installer)
-3. Runs it against your local Discord install
-4. Deletes the installer binary after patching
-5. Starts Discord
+1. Optionally self-updates if you pass `-SelfUpdate` (off by default)
+2. Skips work when Discord already has a Vencord inject (`resources\_app.asar`)
+3. Pulls the latest official [Vencord installer](https://github.com/Vencord/Installer) if needed (PE/MZ check; ~24h cache)
+4. Runs `-install` against your local Discord install
+5. Starts Discord unless `-NoLaunch` (setup.bat uses `-NoLaunch` on Startup)
 
 ## Quick start
 

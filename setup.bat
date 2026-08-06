@@ -22,8 +22,8 @@ if %ERRORLEVEL% neq 0 (
 )
 echo       Done.
 
-echo [2/2] Adding to startup...
-powershell -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut([Environment]::GetFolderPath('Startup') + '\Vencord-AutoPatcher.lnk'); $sc.TargetPath = 'powershell.exe'; $sc.Arguments = '-WindowStyle Hidden -ExecutionPolicy Bypass -File \"%LOCALAPPDATA%\VencordAutoPatcher\Vencord-AutoPatcher.ps1\"'; $sc.Save()"
+echo [2/2] Adding to startup (-NoLaunch; self-update off by default)...
+powershell -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut([Environment]::GetFolderPath('Startup') + '\Vencord-AutoPatcher.lnk'); $sc.TargetPath = 'powershell.exe'; $sc.Arguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"%LOCALAPPDATA%\VencordAutoPatcher\Vencord-AutoPatcher.ps1\" -NoLaunch'; $sc.Save()"
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Could not create startup shortcut. Try running as Administrator.
     pause
@@ -35,8 +35,9 @@ echo.
 echo ==========================================
 echo   Setup complete!
 echo.
-echo   Vencord will now re-patch Discord every
-echo   time you log into Windows.
+echo   On login: re-patch only if Vencord was wiped.
+echo   Does not force-start Discord (-NoLaunch).
+echo   Self-update is off unless you pass -SelfUpdate.
 echo.
 echo   To uninstall: delete the shortcut from
 echo   Win+R ^> shell:startup
@@ -50,5 +51,5 @@ if errorlevel 2 (
     exit
 )
 echo.
-powershell -ExecutionPolicy Bypass -File "%SCRIPT_DIR%\Vencord-AutoPatcher.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%\Vencord-AutoPatcher.ps1" -NoLaunch
 pause
