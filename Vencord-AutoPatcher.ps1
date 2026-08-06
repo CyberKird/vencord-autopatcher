@@ -5,11 +5,12 @@
 
 .DESCRIPTION
     This script:
-    1. Updates itself from the latest GitHub release (unless -NoSelfUpdate)
-    2. Downloads the newest VencordInstallerCli.exe straight from the official GitHub release
-    3. Runs it to patch your local Discord installation
-    4. Cleans up the downloaded installer (no leftovers)
-    5. Launches Discord
+    1. Optionally updates itself from the latest GitHub release (-SelfUpdate)
+    2. Skips work when Discord is already patched (unless -Force)
+    3. Downloads the newest VencordInstallerCli.exe from the official GitHub release
+       (validates PE/MZ header; caches ~24h)
+    4. Runs it to patch your local Discord installation
+    5. Launches Discord unless -NoLaunch
 
     Set it to run at Windows startup via Task Scheduler or Startup folder.
     Use setup.bat for automatic one-click setup.
@@ -22,8 +23,15 @@
 .PARAMETER NoLaunch
     Skip launching Discord after patching.
 
+.PARAMETER SelfUpdate
+    Opt-in: replace this script from the project's GitHub releases.
+    Default is off (safer for a small third-party repo).
+
 .PARAMETER NoSelfUpdate
-    Skip the self-update check.
+    Kept for compatibility. Self-update is already off unless -SelfUpdate is set.
+
+.PARAMETER Force
+    Patch even if Vencord already looks installed (_app.asar present).
 
 .PARAMETER Version
     Print the script version and exit.
@@ -35,12 +43,12 @@
     Show this help text.
 
 .EXAMPLE
-    .\Vencord-AutoPatcher.ps1
-    Updates itself, downloads latest Vencord, patches Discord (stable branch), launches Discord.
+    .\Vencord-AutoPatcher.ps1 -NoLaunch
+    Patch if needed; do not launch Discord.
 
 .EXAMPLE
-    .\Vencord-AutoPatcher.ps1 -Branch canary -NoLaunch
-    Patches Discord Canary and does not launch.
+    .\Vencord-AutoPatcher.ps1 -Branch canary -Force
+    Always re-patch Discord Canary.
 
 .LINK
     https://github.com/Vencord/Installer
@@ -50,13 +58,15 @@ param(
     [ValidateSet("stable", "canary", "ptb")]
     [string]$Branch = "stable",
     [switch]$NoLaunch,
+    [switch]$SelfUpdate,
     [switch]$NoSelfUpdate,
+    [switch]$Force,
     [switch]$Version,
     [switch]$SelfTest,
     [switch]$Help
 )
 
-$ScriptVersion = "1.3.0"
+$ScriptVersion = "1.4.0"
 
 if ($Version) { Write-Host "Vencord Auto-Patcher $ScriptVersion"; exit 0 }
 if ($Help) { Get-Help -Detailed $PSCommandPath; exit 0 }
@@ -66,13 +76,14 @@ $ProgressPreference = "SilentlyContinue"
 # ponytail: Windows PowerShell 5.1 still defaults to TLS 1.0 on older builds; GitHub rejects it
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$logFile      = Join-Path $env:TEMP "VencordAutoPatcher.log"
-$installerDir = "$env:LOCALAPPDATA\VencordAutoPatcher"
-$installerPath = "$installerDir\VencordInstallerCli.exe"
-$installerUrl = "https://github.com/Vencord/Installer/releases/latest/download/VencordInstallerCli.exe"
+$logFile       = Join-Path $env:TEMP "VencordAutoPatcher.log"
+$installerDir  = Join-Path $env:LOCALAPPDATA "VencordAutoPatcher"
+$installerPath = Join-Path $installerDir "VencordInstallerCli.exe"
+$installerUrl  = "https://github.com/Vencord/Installer/releases/latest/download/VencordInstallerCli.exe"
+$cliMaxAgeHours = 24
 
-$selfRepo   = "CyberKird/vencord-autopatcher"
-$selfApiUrl = "https://api.github.com/repos/$selfRepo/releases/latest"
+$selfRepo     = "CyberKird/vencord-autopatcher"
+$selfApiUrl   = "https://api.github.com/repos/$selfRepo/releases/latest"
 $selfAssetUrl = "https://github.com/$selfRepo/releases/latest/download/Vencord-AutoPatcher.ps1"
 
 # branch -> install folder under %LOCALAPPDATA%
@@ -98,9 +109,20 @@ function Write-Step {
 function Get-NormalizedVersion {
     param([string]$Tag)
     # Accepts "v1.2.3" or "1.2.3"; returns $null for anything without a dotted number
-    $m = [regex]::Match("$Tag", '^v?(\d+(?:\.\d+)+)$')
+    $m = [regex]::Match("$Tag", '^v?(\d+(?:\.\d+)+)')
     if (-not $m.Success) { return $null }
-    return [version]$m.Groups[1].Value
+    try { return [version]$m.Groups[1].Value } catch { return $null }
+}
+
+function Test-IsWindowsPe {
+    param([string]$Path)
+    if (-not (Test-Path $Path)) { return $false }
+    $fs = [System.IO.File]::OpenRead($Path)
+    try {
+        if ($fs.Length -lt 64) { return $false }
+        return ($fs.ReadByte() -eq 0x4D -and $fs.ReadByte() -eq 0x5A) # MZ
+    }
+    finally { $fs.Dispose() }
 }
 
 function Invoke-Download {
@@ -113,10 +135,63 @@ function Invoke-Download {
         }
         catch {
             if ($i -eq $Attempts) { throw }
-            Write-Log "Download failed (attempt $i/$Attempts): $_ - retrying in 10s"
+            Write-Log "Download failed (attempt $i/${Attempts}): $_ - retrying in 10s"
             Start-Sleep -Seconds 10
         }
     }
+}
+
+function Get-LatestDiscordAppDir {
+    param([string]$BranchName)
+    $dirName = $branchDirMap[$BranchName]
+    $root = Join-Path $env:LOCALAPPDATA $dirName
+    if (-not (Test-Path $root)) { return $null }
+    $apps = Get-ChildItem -Path $root -Directory -Filter "app-*" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^app-\d+\.\d+\.\d+' } |
+        Sort-Object {
+            $m = [regex]::Match($_.Name, '^app-(\d+\.\d+\.\d+)')
+            if ($m.Success) { [version]$m.Groups[1].Value } else { [version]'0.0.0' }
+        } -Descending
+    if (-not $apps) { return $null }
+    return $apps[0].FullName
+}
+
+function Test-VencordAlreadyPatched {
+    param([string]$BranchName)
+    $appDir = Get-LatestDiscordAppDir -BranchName $BranchName
+    if (-not $appDir) {
+        Write-Log "Patch check: no Discord app-* for $BranchName"
+        return $false
+    }
+    $backup = Join-Path $appDir "resources\_app.asar"
+    $ok = Test-Path $backup
+    Write-Log "Patch check: $appDir _app.asar=$(if ($ok) { 'yes' } else { 'no' })"
+    return $ok
+}
+
+function Ensure-OfficialCli {
+    $needDownload = $true
+    if ((Test-Path $installerPath) -and (Test-IsWindowsPe $installerPath)) {
+        $age = (Get-Date) - (Get-Item $installerPath).LastWriteTime
+        if ($age.TotalHours -lt $cliMaxAgeHours) {
+            Write-Log "Reusing cached official CLI (age $([int]$age.TotalMinutes)m)"
+            $needDownload = $false
+        }
+    }
+
+    if (-not $needDownload) {
+        Write-Step "2/5" "Using cached official VencordInstallerCli"
+        return
+    }
+
+    Write-Step "2/5" "Downloading latest Vencord installer..."
+    $staged = "$installerPath.download"
+    Invoke-Download -Uri $installerUrl -OutFile $staged
+    if (-not (Test-IsWindowsPe $staged)) {
+        Remove-Item -Force $staged -ErrorAction SilentlyContinue
+        throw "Downloaded installer is not a Windows PE (HTML/corrupt). Refusing to run."
+    }
+    Move-Item -Force $staged $installerPath
 }
 
 function Invoke-SelfUpdate {
@@ -134,7 +209,7 @@ function Invoke-SelfUpdate {
 
     # Integrity gate: a truncated download or an HTML error page must never replace the script
     $errors = $null
-    [System.Management.Automation.Language.Parser]::ParseFile($staged, [ref]$null, [ref]$errors) | Out-Null
+    [void][System.Management.Automation.Language.Parser]::ParseFile($staged, [ref]$null, [ref]$errors)
     $body = Get-Content -Raw $staged
     if ($errors.Count -gt 0 -or $body -notmatch '\$ScriptVersion\s*=') {
         Remove-Item -Force $staged -ErrorAction SilentlyContinue
@@ -145,6 +220,19 @@ function Invoke-SelfUpdate {
     Move-Item -Force $staged $PSCommandPath
     Write-Step "1/5" "Updated patcher $ScriptVersion -> $remote, restarting..."
     return $true
+}
+
+function Start-DiscordBranch {
+    param([string]$BranchName)
+    $dirName = $branchDirMap[$BranchName]
+    $updater = Join-Path $env:LOCALAPPDATA "$dirName\Update.exe"
+    if (Test-Path $updater) {
+        Start-Process -FilePath $updater -ArgumentList "--processStart", "$dirName.exe"
+    }
+    else {
+        Write-Warning "$dirName Update.exe not found. Is that Discord branch installed?"
+        Write-Log "WARN: $updater not found"
+    }
 }
 
 if ($SelfTest) {
@@ -164,14 +252,17 @@ if ((Test-Path $logFile) -and (Get-Item $logFile).Length -gt 1MB) {
     Move-Item -Force $logFile "$logFile.old"
 }
 
+# Self-update is opt-in (-SelfUpdate). -NoSelfUpdate remains for older startup shortcuts.
+$doSelfUpdate = $SelfUpdate -and -not $NoSelfUpdate
+
 Write-Log "=== Vencord Auto-Patcher $ScriptVersion started ==="
-Write-Log "Branch: $Branch, NoLaunch: $NoLaunch, NoSelfUpdate: $NoSelfUpdate"
+Write-Log "Branch: $Branch, NoLaunch: $NoLaunch, SelfUpdate: $doSelfUpdate, Force: $Force"
 
 try {
     New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
 
-    if ($NoSelfUpdate) {
-        Write-Step "1/5" "Skipping self-update (-NoSelfUpdate set)"
+    if (-not $doSelfUpdate) {
+        Write-Step "1/5" "Self-update off (pass -SelfUpdate to enable)"
     }
     else {
         Write-Step "1/5" "Checking for a newer patcher..."
@@ -183,17 +274,32 @@ try {
             Remove-Item -Force "$PSCommandPath.new" -ErrorAction SilentlyContinue
         }
         if ($updated) {
-            # -NoSelfUpdate on the re-exec makes an update loop structurally impossible
             $reArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $PSCommandPath,
-                        "-Branch", $Branch, "-NoSelfUpdate")
+                        "-Branch", $Branch)
             if ($NoLaunch) { $reArgs += "-NoLaunch" }
+            if ($Force)    { $reArgs += "-Force" }
+            # Do not pass -SelfUpdate on re-exec (loop prevention)
             & (Get-Process -Id $PID).Path @reArgs
             exit $LASTEXITCODE
         }
     }
 
-    Write-Step "2/5" "Downloading latest Vencord installer..."
-    Invoke-Download -Uri $installerUrl -OutFile $installerPath
+    if (-not $Force -and (Test-VencordAlreadyPatched -BranchName $Branch)) {
+        Write-Step "2/5" "Already patched - skip download/install"
+        Write-Step "3/5" "Skip patch"
+        Write-Step "4/5" "Skip cleanup"
+        if ($NoLaunch) {
+            Write-Step "5/5" "Skipping Discord launch (-NoLaunch set)"
+        }
+        else {
+            Write-Step "5/5" "Launching Discord ($Branch)..."
+            Start-DiscordBranch -BranchName $Branch
+        }
+        Write-Log "=== Done (skipped patch) ==="
+        exit 0
+    }
+
+    Ensure-OfficialCli
 
     Write-Step "3/5" "Patching Discord ($Branch branch)..."
     $prev = $ErrorActionPreference
@@ -207,29 +313,22 @@ try {
     $ErrorActionPreference = $prev
     if ($patchExit -ne 0) { throw "Installer exited with code $patchExit" }
 
-    Write-Step "4/5" "Cleaning up..."
-    Remove-Item -Force $installerPath -ErrorAction SilentlyContinue
+    Write-Step "4/5" "Keeping cached CLI (${cliMaxAgeHours}h reuse; PE-validated)"
 
     if ($NoLaunch) {
         Write-Step "5/5" "Skipping Discord launch (-NoLaunch set)"
     }
     else {
         Write-Step "5/5" "Launching Discord ($Branch)..."
-        $dirName = $branchDirMap[$Branch]
-        $updater = "$env:LOCALAPPDATA\$dirName\Update.exe"
-        if (Test-Path $updater) {
-            Start-Process -FilePath $updater -ArgumentList "--processStart", "$dirName.exe"
-        }
-        else {
-            Write-Warning "$dirName Update.exe not found. Is that Discord branch installed?"
-            Write-Log "WARN: $updater not found"
-        }
+        Start-DiscordBranch -BranchName $Branch
     }
 
     Write-Log "=== Done ==="
 }
 catch {
     Write-Log "ERROR: $_"
-    Remove-Item -Force $installerPath -ErrorAction SilentlyContinue
+    if ((Test-Path $installerPath) -and -not (Test-IsWindowsPe $installerPath)) {
+        Remove-Item -Force $installerPath -ErrorAction SilentlyContinue
+    }
     throw
 }
