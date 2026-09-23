@@ -16,6 +16,10 @@ Runs on **Windows**, **Linux**, and **macOS**.
 4. Deletes the installer binary after patching
 5. Starts Discord
 
+On Windows it first checks whether Discord is still patched. Most logins Discord hasn't updated, so steps 2 to 4 are skipped and Discord opens right away. Pass `-Force` to patch anyway.
+
+If patching fails (no network at login, GitHub down), Discord still opens, just without Vencord, and a Windows notification tells you so. The details are in the log.
+
 ## Quick start
 
 ### Windows
@@ -28,7 +32,9 @@ Runs on **Windows**, **Linux**, and **macOS**.
 
 The script goes into `%LOCALAPPDATA%\VencordAutoPatcher\` and runs silently at every login.
 
-**Upgrading:** run `setup.bat` again. It finds the existing install (including the old `C:\Scripts` location from early versions), replaces it, removes any duplicate startup entries and keeps your branch choice.
+**Discord's own "open on startup" gets switched off.** Otherwise Discord and the patcher start at the same time: Discord opens before it's patched, or opens twice. The patcher opens Discord itself once it's done. You can see this under Task Manager → Startup apps, and uninstalling switches it back on.
+
+**Upgrading or removing:** run `setup.bat` again. If the patcher is already installed it asks whether to update or remove it. Updating replaces the existing install (including the old `C:\Scripts` location from early versions), clears duplicate startup entries and keeps your branch choice.
 
 ---
 
@@ -101,7 +107,9 @@ chmod +x vencord-autopatcher.sh
 | Branch | `-Branch` | `-b` | `stable`, `canary`, or `ptb` | `stable` |
 | Skip launch | `-NoLaunch` | `-n` | Patch only, don't start Discord | off |
 | Skip self-update | `-NoSelfUpdate` | `-u` | Don't check for a newer patcher | off |
+| Always patch | `-Force` | (always) | Patch even if Discord still looks patched | off |
 | Install / upgrade | `-Install` | (manual, see above) | Copy to `%LOCALAPPDATA%` and add to startup | (none) |
+| Uninstall | `-Uninstall` | (manual, see below) | Remove the patcher, restore Discord's startup entry | (none) |
 | Version | `-Version` | `-V` | Print the patcher version | (none) |
 | Help | `-Help` | `-h` | Show usage | (none) |
 
@@ -117,7 +125,7 @@ Before overwriting itself it syntax-checks the download, so a half-finished down
 
 ## Uninstall
 
-- **Windows**: `Win+R` → `shell:startup` → delete the shortcut. Optionally delete `%LOCALAPPDATA%\VencordAutoPatcher\`.
+- **Windows**: run `setup.bat` and pick **Remove**. That deletes the startup entry and the script, and switches Discord's own startup entry back on. Vencord stays installed; remove it with the [Vencord installer](https://github.com/Vencord/Installer) if you want it gone too.
 - **Linux**: `rm ~/.config/autostart/vencord-autopatcher.desktop`
 - **macOS**: System Preferences → Users & Groups → Login Items → select and remove
 

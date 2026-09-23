@@ -5,18 +5,32 @@ echo ==========================================
 echo   Vencord Auto-Patcher - Setup
 echo ==========================================
 echo.
-echo This will:
-echo   1. Download the latest script to %LOCALAPPDATA%\VencordAutoPatcher
-echo   2. Add it to your Windows startup
-echo   3. Optionally run it now
-echo.
-echo Already installed? Running this again upgrades it in place.
-echo.
 
 set "SCRIPT=%LOCALAPPDATA%\VencordAutoPatcher\Vencord-AutoPatcher.ps1"
 set "DOWNLOAD=%TEMP%\Vencord-AutoPatcher-setup.ps1"
+set "ACTION=-Install"
 
-echo [1/2] Downloading latest script...
+set "EXISTING="
+if exist "%SCRIPT%" set "EXISTING=1"
+if exist "C:\Scripts\Vencord-AutoPatcher.ps1" set "EXISTING=1"
+
+if not defined EXISTING goto :fresh
+echo The patcher is already installed on this PC.
+echo.
+choice /c UR /n /m "[U]pdate it to the latest version, or [R]emove it? "
+if errorlevel 2 set "ACTION=-Uninstall"
+echo.
+goto :download
+
+:fresh
+echo This will:
+echo   1. Download the latest script to %LOCALAPPDATA%\VencordAutoPatcher
+echo   2. Run it at every login, before Discord opens
+echo   3. Optionally run it now
+echo.
+
+:download
+echo Downloading the latest patcher...
 rem Download to TEMP first so a failed download never touches an existing install
 powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/CyberKird/vencord-autopatcher/releases/latest/download/Vencord-AutoPatcher.ps1' -OutFile $env:DOWNLOAD"
 if errorlevel 1 (
@@ -24,28 +38,31 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-echo       Done.
 
-echo [2/2] Installing...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%DOWNLOAD%" -Install
+powershell -NoProfile -ExecutionPolicy Bypass -File "%DOWNLOAD%" %ACTION%
 set "RESULT=%ERRORLEVEL%"
 del "%DOWNLOAD%" 2>nul
 if not "%RESULT%"=="0" (
-    echo ERROR: Install failed. Details are in %TEMP%\VencordAutoPatcher.log
+    echo ERROR: Setup failed. Details are in %TEMP%\VencordAutoPatcher.log
     pause
     exit /b 1
+)
+
+if "%ACTION%"=="-Uninstall" (
+    echo.
+    pause
+    exit /b 0
 )
 
 echo.
 echo ==========================================
 echo   Setup complete!
 echo.
-echo   Vencord will now re-patch Discord every
-echo   time you log into Windows. The patcher
-echo   also keeps itself up to date.
+echo   Discord gets re-patched automatically
+echo   after every Discord update, and the
+echo   patcher keeps itself up to date.
 echo.
-echo   To uninstall: delete the shortcut from
-echo   Win+R ^> shell:startup
+echo   To remove it, run this file again.
 echo ==========================================
 echo.
 choice /c YN /n /m "Run it now? [Y/N] "

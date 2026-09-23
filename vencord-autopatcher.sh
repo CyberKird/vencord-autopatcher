@@ -25,7 +25,7 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-readonly VERSION="1.4.0"
+readonly VERSION="1.5.0"
 readonly REPO_URL="https://github.com/Vencord/Installer/releases/latest/download"
 readonly CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/vencord-autopatcher"
 readonly SCRIPT_NAME="${0##*/}"
