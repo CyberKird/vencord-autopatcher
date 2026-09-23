@@ -28,6 +28,8 @@ Runs on **Windows**, **Linux**, and **macOS**.
 
 The script goes into `%LOCALAPPDATA%\VencordAutoPatcher\` and runs silently at every login.
 
+**Upgrading:** run `setup.bat` again. It finds the existing install (including the old `C:\Scripts` location from early versions), replaces it, removes any duplicate startup entries and keeps your branch choice.
+
 ---
 
 **Manual setup:**
@@ -99,14 +101,19 @@ chmod +x vencord-autopatcher.sh
 | Branch | `-Branch` | `-b` | `stable`, `canary`, or `ptb` | `stable` |
 | Skip launch | `-NoLaunch` | `-n` | Patch only, don't start Discord | off |
 | Skip self-update | `-NoSelfUpdate` | `-u` | Don't check for a newer patcher | off |
+| Install / upgrade | `-Install` | (manual, see above) | Copy to `%LOCALAPPDATA%` and add to startup | (none) |
 | Version | `-Version` | `-V` | Print the patcher version | (none) |
 | Help | `-Help` | `-h` | Show usage | (none) |
 
 ## Self-update
 
-On every run the patcher checks its own [latest release](https://github.com/CyberKird/vencord-autopatcher/releases/latest). If a newer version exists it replaces itself on disk and restarts with the same flags, so you set it up once and never download it again.
+Self-update is **on by default**. On every run the patcher checks its own [latest release](https://github.com/CyberKird/vencord-autopatcher/releases/latest). If a newer version exists it replaces itself on disk and restarts with the same flags, so you set it up once and never download it again.
 
-Before overwriting itself it syntax-checks the download, so a half-finished download or a GitHub error page can't leave you with a broken script. If GitHub is unreachable the check is skipped silently and Discord still gets patched. Pass `-NoSelfUpdate` / `-u` to turn it off.
+Before overwriting itself it syntax-checks the download, so a half-finished download or a GitHub error page can't leave you with a broken script. If GitHub is unreachable the check is skipped silently and Discord still gets patched.
+
+**Prefer to update by hand?** Add `-NoSelfUpdate` (Windows) or `-u` (Linux / macOS) to the startup command. On Windows that means editing the shortcut in `shell:startup`; `setup.bat` keeps the flag when you upgrade later.
+
+**Installed before v1.3.0?** Those versions can't update themselves. Run `setup.bat` once and you're on the self-updating version.
 
 ## Uninstall
 

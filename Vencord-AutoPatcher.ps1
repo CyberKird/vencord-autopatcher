@@ -25,6 +25,10 @@
 .PARAMETER NoSelfUpdate
     Skip the self-update check.
 
+.PARAMETER Install
+    Copy this script to %LOCALAPPDATA%\VencordAutoPatcher and register it to run at login.
+    Replaces any existing install, including the old C:\Scripts location, and keeps its flags.
+
 .PARAMETER Version
     Print the script version and exit.
 
@@ -42,6 +46,10 @@
     .\Vencord-AutoPatcher.ps1 -Branch canary -NoLaunch
     Patches Discord Canary and does not launch.
 
+.EXAMPLE
+    .\Vencord-AutoPatcher.ps1 -Install
+    Installs the patcher to run at login, or upgrades an existing install in place.
+
 .LINK
     https://github.com/Vencord/Installer
 #>
@@ -51,19 +59,21 @@ param(
     [string]$Branch = "stable",
     [switch]$NoLaunch,
     [switch]$NoSelfUpdate,
+    [switch]$Install,
     [switch]$Version,
     [switch]$SelfTest,
     [switch]$Help
 )
 
-$ScriptVersion = "1.3.0"
+$ScriptVersion = "1.4.0"
+$BranchGiven = $PSBoundParameters.ContainsKey("Branch")
 
 if ($Version) { Write-Host "Vencord Auto-Patcher $ScriptVersion"; exit 0 }
 if ($Help) { Get-Help -Detailed $PSCommandPath; exit 0 }
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-# ponytail: Windows PowerShell 5.1 still defaults to TLS 1.0 on older builds; GitHub rejects it
+# Windows PowerShell 5.1 still defaults to TLS 1.0 on older builds; GitHub rejects it
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $logFile      = Join-Path $env:TEMP "VencordAutoPatcher.log"
@@ -105,7 +115,7 @@ function Get-NormalizedVersion {
 
 function Invoke-Download {
     param([string]$Uri, [string]$OutFile, [int]$Attempts = 3)
-    # ponytail: at login the NIC is often not up yet - retry instead of failing the whole run
+    # At login the NIC is often not up yet - retry instead of failing the whole run
     for ($i = 1; $i -le $Attempts; $i++) {
         try {
             Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
@@ -147,6 +157,69 @@ function Invoke-SelfUpdate {
     return $true
 }
 
+function Get-FileScriptVersion {
+    param([string]$Text)
+    # Releases before 1.3.0 carried no version marker
+    $m = [regex]::Match("$Text", '\$ScriptVersion\s*=\s*"([^"]+)"')
+    if ($m.Success) { return $m.Groups[1].Value }
+    return "pre-1.3"
+}
+
+function Install-Patcher {
+    $target  = Join-Path $installerDir "Vencord-AutoPatcher.ps1"
+    $legacy  = "C:\Scripts\Vencord-AutoPatcher.ps1"
+    $startup = [Environment]::GetFolderPath("Startup")
+    $lnkName = "Vencord-AutoPatcher.lnk"
+    $shell   = New-Object -ComObject WScript.Shell
+
+    $previous = @($target, $legacy) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($previous) {
+        $prevVer = Get-FileScriptVersion (Get-Content -Raw $previous)
+        if ($prevVer -eq $ScriptVersion) { Write-Host "Already on $ScriptVersion, refreshing the startup entry." }
+        else { Write-Host "Found an existing install ($prevVer), replacing it with $ScriptVersion." }
+    }
+
+    # Any startup shortcut running a copy of the patcher, whatever it is called. Two of them
+    # would patch Discord twice at login, so they all go, but their flags carry over.
+    $branch = $Branch
+    $noLaunch = [bool]$NoLaunch
+    $noSelf = [bool]$NoSelfUpdate
+    $stale = @()
+    foreach ($lnk in Get-ChildItem -Path $startup -Filter *.lnk -ErrorAction SilentlyContinue) {
+        $lnkArgs = $shell.CreateShortcut($lnk.FullName).Arguments
+        if ($lnkArgs -notmatch 'Vencord-AutoPatcher\.ps1') { continue }
+        if (-not $BranchGiven -and $lnkArgs -match '-Branch\s+(stable|canary|ptb)') { $branch = $Matches[1] }
+        if ($lnkArgs -match '-NoLaunch') { $noLaunch = $true }
+        if ($lnkArgs -match '-NoSelfUpdate') { $noSelf = $true }
+        if ($lnk.Name -ne $lnkName) { $stale += $lnk.FullName }
+    }
+
+    New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
+    if ($PSCommandPath -ne $target) { Copy-Item -Force $PSCommandPath $target }
+
+    $runArgs = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$target`""
+    if ($branch -ne "stable") { $runArgs += " -Branch $branch" }
+    if ($noLaunch) { $runArgs += " -NoLaunch" }
+    if ($noSelf) { $runArgs += " -NoSelfUpdate" }
+
+    $sc = $shell.CreateShortcut((Join-Path $startup $lnkName))
+    $sc.TargetPath = "powershell.exe"
+    $sc.Arguments = $runArgs
+    $sc.Save()
+
+    # Old entries are removed only after the new one exists, so a failure never leaves nothing
+    $stale | ForEach-Object { Remove-Item -Force $_ -ErrorAction SilentlyContinue }
+    if (Test-Path $legacy) {
+        Remove-Item -Force $legacy -ErrorAction SilentlyContinue
+        if (-not (Get-ChildItem -Force "C:\Scripts" -ErrorAction SilentlyContinue)) {
+            Remove-Item "C:\Scripts" -ErrorAction SilentlyContinue
+        }
+    }
+
+    Write-Log "Installed $ScriptVersion to $target ($runArgs)"
+    Write-Host "Installed $ScriptVersion (branch: $branch, self-update: $(if ($noSelf) { 'off' } else { 'on' }))."
+}
+
 if ($SelfTest) {
     function Assert { param([bool]$Cond, [string]$Msg) if (-not $Cond) { throw "FAIL: $Msg" }; Write-Host "ok  $Msg" }
     Assert ((Get-NormalizedVersion 'v1.2.10') -eq [version]'1.2.10') 'v-prefixed tag parses'
@@ -155,11 +228,18 @@ if ($SelfTest) {
     Assert ((Get-NormalizedVersion '1.2.0') -le (Get-NormalizedVersion 'v1.2.0')) 'equal tag is not newer'
     Assert ($null -eq (Get-NormalizedVersion 'nightly')) 'non-numeric tag rejected'
     Assert ($null -eq (Get-NormalizedVersion '')) 'empty tag rejected'
+    Assert ((Get-FileScriptVersion '$ScriptVersion = "1.3.0"') -eq '1.3.0') 'installed version is read from file'
+    Assert ((Get-FileScriptVersion 'Write-Host hi') -eq 'pre-1.3') 'unversioned install is recognised'
     Write-Host "`nAll self-tests passed."
     exit 0
 }
 
-# ponytail: single 1 MB rotation, this appends once per login - real rotation is overkill
+if ($Install) {
+    Install-Patcher
+    exit 0
+}
+
+# One run per login, so a single 1 MB rollover is plenty
 if ((Test-Path $logFile) -and (Get-Item $logFile).Length -gt 1MB) {
     Move-Item -Force $logFile "$logFile.old"
 }

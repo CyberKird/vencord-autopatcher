@@ -13,6 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # A tag newer than the version inside the scripts makes every install re-download itself on each run
+      - name: Check script versions match the tag
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          grep -q "^\$ScriptVersion = \"$v\"" Vencord-AutoPatcher.ps1 || { echo "::error::Vencord-AutoPatcher.ps1 is not $v"; exit 1; }
+          grep -q "^readonly VERSION=\"$v\"" vencord-autopatcher.sh || { echo "::error::vencord-autopatcher.sh is not $v"; exit 1; }
       - uses: softprops/action-gh-release@v2
         with:
           files: |

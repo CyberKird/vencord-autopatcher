@@ -13,7 +13,7 @@
 - **Windows (PowerShell)**: proper param blocks, `Write-Host`, `try/catch`, `$PascalCase`
 - **UNIX (bash)**: `set -euo pipefail`, `getopts`, `readonly`, `snake_case_vars`
 
-Both scripts should stay under 200 lines. Keep it readable; these are meant to be skimmed by users, not just machines.
+Keep both scripts readable; they are meant to be skimmed by users, not just machines. Bump `$ScriptVersion` / `VERSION` in both scripts before tagging a release, or self-update will re-download on every run.
 
 ## Testing
 

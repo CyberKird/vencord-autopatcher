@@ -1,7 +1,8 @@
 @echo off
+setlocal
 title Vencord Auto-Patcher - Setup
 echo ==========================================
-echo   Vencord Auto-Patcher - One-Time Setup
+echo   Vencord Auto-Patcher - Setup
 echo ==========================================
 echo.
 echo This will:
@@ -9,34 +10,39 @@ echo   1. Download the latest script to %LOCALAPPDATA%\VencordAutoPatcher
 echo   2. Add it to your Windows startup
 echo   3. Optionally run it now
 echo.
+echo Already installed? Running this again upgrades it in place.
+echo.
 
-set SCRIPT_DIR=%LOCALAPPDATA%\VencordAutoPatcher
-mkdir "%SCRIPT_DIR%" 2>nul
+set "SCRIPT=%LOCALAPPDATA%\VencordAutoPatcher\Vencord-AutoPatcher.ps1"
+set "DOWNLOAD=%TEMP%\Vencord-AutoPatcher-setup.ps1"
 
 echo [1/2] Downloading latest script...
-powershell -Command "Invoke-WebRequest -Uri 'https://github.com/CyberKird/vencord-autopatcher/releases/latest/download/Vencord-AutoPatcher.ps1' -OutFile '%SCRIPT_DIR%\Vencord-AutoPatcher.ps1'"
-if %ERRORLEVEL% neq 0 (
+rem Download to TEMP first so a failed download never touches an existing install
+powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = 'Tls12'; Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/CyberKird/vencord-autopatcher/releases/latest/download/Vencord-AutoPatcher.ps1' -OutFile $env:DOWNLOAD"
+if errorlevel 1 (
     echo ERROR: Could not download the script. Check your internet connection.
     pause
     exit /b 1
 )
 echo       Done.
 
-echo [2/2] Adding to startup...
-powershell -Command "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut([Environment]::GetFolderPath('Startup') + '\Vencord-AutoPatcher.lnk'); $sc.TargetPath = 'powershell.exe'; $sc.Arguments = '-WindowStyle Hidden -ExecutionPolicy Bypass -File \"%LOCALAPPDATA%\VencordAutoPatcher\Vencord-AutoPatcher.ps1\"'; $sc.Save()"
-if %ERRORLEVEL% neq 0 (
-    echo ERROR: Could not create startup shortcut. Try running as Administrator.
+echo [2/2] Installing...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%DOWNLOAD%" -Install
+set "RESULT=%ERRORLEVEL%"
+del "%DOWNLOAD%" 2>nul
+if not "%RESULT%"=="0" (
+    echo ERROR: Install failed. Details are in %TEMP%\VencordAutoPatcher.log
     pause
     exit /b 1
 )
-echo       Done.
 
 echo.
 echo ==========================================
 echo   Setup complete!
 echo.
 echo   Vencord will now re-patch Discord every
-echo   time you log into Windows.
+echo   time you log into Windows. The patcher
+echo   also keeps itself up to date.
 echo.
 echo   To uninstall: delete the shortcut from
 echo   Win+R ^> shell:startup
@@ -47,8 +53,8 @@ if errorlevel 2 (
     echo.
     echo You're all set. Restart or log out to test.
     timeout /t 5 >nul
-    exit
+    exit /b 0
 )
 echo.
-powershell -ExecutionPolicy Bypass -File "%SCRIPT_DIR%\Vencord-AutoPatcher.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%"
 pause
