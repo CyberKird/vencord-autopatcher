@@ -5,12 +5,14 @@
 
 .DESCRIPTION
     This script:
-    1. Updates itself from the latest GitHub release (unless -NoSelfUpdate)
-    2. Checks whether Discord is still patched; if it is, skips straight to step 5
+    1. Checks whether Discord is still patched; if it is, skips straight to step 5
+    2. Updates itself from the latest GitHub release (unless -NoSelfUpdate)
     3. Downloads the newest VencordInstallerCli.exe from the official GitHub release
-       and runs it to patch your local Discord installation
-    4. Cleans up the downloaded installer (no leftovers)
+    4. Runs it to patch your local Discord installation, then deletes it (no leftovers)
     5. Launches Discord, even when patching failed, and shows a notification if it did
+
+    When Discord is still patched, the self-update check runs after Discord has opened,
+    so a slow network at login never delays Discord.
 
     Use setup.bat (or -Install) to run it at every login.
 
@@ -75,7 +77,7 @@ param(
     [switch]$Help
 )
 
-$ScriptVersion = "1.5.0"
+$ScriptVersion = "1.6.0"
 $BranchGiven = $PSBoundParameters.ContainsKey("Branch")
 
 if ($Version) { Write-Host "Vencord Auto-Patcher $ScriptVersion"; exit 0 }
@@ -136,7 +138,8 @@ function Invoke-Download {
     # At login the NIC is often not up yet - retry instead of failing the whole run
     for ($i = 1; $i -le $Attempts; $i++) {
         try {
-            Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
+            # Without a timeout a half-up network at login can stall a request for minutes
+            Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -TimeoutSec 300
             return
         }
         catch {
@@ -150,7 +153,7 @@ function Invoke-Download {
 function Invoke-SelfUpdate {
     # Returns $true when the script on disk was replaced by a newer release.
     $local = Get-NormalizedVersion $ScriptVersion
-    $tag = (Invoke-RestMethod -Uri $selfApiUrl -UseBasicParsing `
+    $tag = (Invoke-RestMethod -Uri $selfApiUrl -UseBasicParsing -TimeoutSec 15 `
             -Headers @{ "User-Agent" = "vencord-autopatcher" }).tag_name
     $remote = Get-NormalizedVersion $tag
 
@@ -171,7 +174,8 @@ function Invoke-SelfUpdate {
     }
 
     Move-Item -Force $staged $PSCommandPath
-    Write-Step "1/5" "Updated patcher $ScriptVersion -> $remote, restarting..."
+    Write-Host "Updated patcher $ScriptVersion -> $remote"
+    Write-Log "Updated patcher $ScriptVersion -> $remote"
     return $true
 }
 
@@ -183,17 +187,41 @@ function Get-FileScriptVersion {
     return "pre-1.3"
 }
 
+function Get-LatestDiscordApp {
+    param([string]$InstallDir)
+    # Every Discord update lands in a fresh app-x.y.z folder; the newest one is what runs
+    Get-ChildItem -Directory -Path $InstallDir -Filter "app-*" -ErrorAction SilentlyContinue |
+        Sort-Object { Get-NormalizedVersion ($_.Name -replace '^app-', '') } |
+        Select-Object -Last 1
+}
+
 function Test-DiscordPatched {
     param([string]$InstallDir)
     # Vencord moves the real app.asar to _app.asar and leaves a tiny loader in its place.
-    # Every Discord update lands in a fresh app-x.y.z folder, which starts out unpatched.
-    $app = Get-ChildItem -Directory -Path $InstallDir -Filter "app-*" -ErrorAction SilentlyContinue |
-        Sort-Object { Get-NormalizedVersion ($_.Name -replace '^app-', '') } |
-        Select-Object -Last 1
+    # A fresh app-x.y.z folder from a Discord update starts out unpatched.
+    $app = Get-LatestDiscordApp $InstallDir
     if (-not $app) { return $false }
     $resources = Join-Path $app.FullName "resources"
     $loader = Get-Item (Join-Path $resources "app.asar") -ErrorAction SilentlyContinue
     return [bool]((Test-Path (Join-Path $resources "_app.asar")) -and $loader -and $loader.Length -lt 64KB)
+}
+
+function Test-DiscordUnpacking {
+    param([string]$InstallDir)
+    # A Discord that is already open (taskbar, another startup entry) may be unpacking an
+    # update into a new app-x.y.z folder right now, and app.asar is not there until it is done.
+    # Patching then fails, after the Vencord installer has already killed Discord mid-update.
+    # Only a recent folder counts, so a broken leftover never stalls every login.
+    $app = Get-LatestDiscordApp $InstallDir
+    return [bool]($app -and $app.CreationTime -gt (Get-Date).AddMinutes(-10) -and
+        -not (Test-Path (Join-Path $app.FullName "resources\app.asar")))
+}
+
+function Get-ProcessStartArgs {
+    param([string]$Command)
+    # "Update.exe --processStart Discord.exe --process-start-args --start-minimized"
+    $m = [regex]::Match("$Command", '--process-start-args\s+(?:"([^"]*)"|(\S+))')
+    if ($m.Success) { return "$($m.Groups[1].Value)$($m.Groups[2].Value)" }
 }
 
 function Show-FailureNotice {
@@ -328,6 +356,17 @@ function Uninstall-Patcher {
     Write-Host "Vencord Auto-Patcher removed. Vencord itself is still installed; use the Vencord installer to remove it."
 }
 
+function Get-DiscordStartArgs {
+    param([string]$DirName)
+    # Discord keeps its launch flags (start minimized, user-added switches) on its own startup
+    # entry. -Install turned that entry off, so carry the flags over instead of dropping them.
+    $run = Get-ItemProperty -Path $runKey -ErrorAction SilentlyContinue
+    foreach ($name in Get-DiscordRunEntries $DirName) {
+        $startArgs = Get-ProcessStartArgs $run.$name
+        if ($startArgs) { return $startArgs }
+    }
+}
+
 if ($SelfTest) {
     function Assert { param([bool]$Cond, [string]$Msg) if (-not $Cond) { throw "FAIL: $Msg" }; Write-Host "ok  $Msg" }
     Assert ((Get-NormalizedVersion 'v1.2.10') -eq [version]'1.2.10') 'v-prefixed tag parses'
@@ -338,6 +377,9 @@ if ($SelfTest) {
     Assert ($null -eq (Get-NormalizedVersion '')) 'empty tag rejected'
     Assert ((Get-FileScriptVersion '$ScriptVersion = "1.3.0"') -eq '1.3.0') 'installed version is read from file'
     Assert ((Get-FileScriptVersion 'Write-Host hi') -eq 'pre-1.3') 'unversioned install is recognised'
+    Assert ((Get-ProcessStartArgs '"C:\D\Update.exe" --processStart Discord.exe --process-start-args --start-minimized') -eq '--start-minimized') 'bare start flag is carried over'
+    Assert ((Get-ProcessStartArgs '"C:\D\Update.exe" --processStart Discord.exe --process-start-args "--a --b"') -eq '--a --b') 'quoted start flags are carried over'
+    Assert ($null -eq (Get-ProcessStartArgs '"C:\D\Update.exe" --processStart Discord.exe')) 'no start flags, nothing added'
 
     # Fake Discord installs: an older patched build next to a newer unpatched one
     $fake = Join-Path $env:TEMP "vap-selftest-$PID"
@@ -354,6 +396,11 @@ if ($SelfTest) {
         Assert (-not (Test-DiscordPatched $fake)) 'newest build (1.0.10, not 1.0.9) decides'
         New-FakeBuild 'app-1.0.10' $true
         Assert (Test-DiscordPatched $fake) 'newest build patched again'
+        Assert (-not (Test-DiscordUnpacking $fake)) 'finished build is not unpacking'
+        $half = New-Item -ItemType Directory -Force -Path "$fake\app-1.0.11\resources"
+        Assert (Test-DiscordUnpacking $fake) 'fresh build without app.asar is still unpacking'
+        $half.Parent.CreationTime = (Get-Date).AddHours(-1)
+        Assert (-not (Test-DiscordUnpacking $fake)) 'old broken build does not stall the run'
     }
     finally { Remove-Item -Recurse -Force $fake -ErrorAction SilentlyContinue }
 
@@ -373,43 +420,55 @@ Write-Log "=== Vencord Auto-Patcher $ScriptVersion started ==="
 Write-Log "Branch: $Branch, NoLaunch: $NoLaunch, NoSelfUpdate: $NoSelfUpdate, Force: $Force"
 
 $dirName = $branchDirMap[$Branch]
+$discordDir = "$env:LOCALAPPDATA\$dirName"
 $failure = $null
+$patched = $false
 
 try {
     New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
 
-    if ($NoSelfUpdate) {
-        Write-Step "1/5" "Skipping self-update (-NoSelfUpdate set)"
-    }
-    else {
-        Write-Step "1/5" "Checking for a newer patcher..."
-        $updated = $false
-        try { $updated = Invoke-SelfUpdate }
-        catch {
-            # A failed self-update must never block patching Discord
-            Write-Log "Self-update failed (continuing on $ScriptVersion): $($_.Exception.Message)"
-            Remove-Item -Force "$PSCommandPath.new" -ErrorAction SilentlyContinue
-        }
-        if ($updated) {
-            # -NoSelfUpdate on the re-exec makes an update loop structurally impossible
-            $reArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $PSCommandPath,
-                        "-Branch", $Branch, "-NoSelfUpdate")
-            if ($NoLaunch) { $reArgs += "-NoLaunch" }
-            if ($Force) { $reArgs += "-Force" }
-            & (Get-Process -Id $PID).Path @reArgs
-            exit $LASTEXITCODE
-        }
+    if (Test-DiscordUnpacking $discordDir) {
+        Write-Log "Discord is unpacking an update, waiting for it to finish"
+        $deadline = (Get-Date).AddMinutes(2)
+        while ((Test-DiscordUnpacking $discordDir) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 3 }
     }
 
-    if (-not $Force -and (Test-DiscordPatched "$env:LOCALAPPDATA\$dirName")) {
-        # Most logins: Discord has not updated since the last patch, so skip the download
-        Write-Step "2/5" "Discord ($Branch) is still patched, nothing to do (-Force patches anyway)"
+    $patched = -not $Force -and (Test-DiscordPatched $discordDir)
+    if ($patched) {
+        # Most logins: Discord has not updated since the last patch, so nothing to download
+        Write-Step "1/5" "Discord ($Branch) is still patched, nothing to do (-Force patches anyway)"
     }
     else {
-        Write-Step "2/5" "Downloading latest Vencord installer..."
+        Write-Step "1/5" "Discord ($Branch) needs patching"
+
+        if ($NoSelfUpdate) {
+            Write-Step "2/5" "Skipping self-update (-NoSelfUpdate set)"
+        }
+        else {
+            # Before patching, so a fix in a newer patcher already applies to this run
+            Write-Step "2/5" "Checking for a newer patcher..."
+            $updated = $false
+            try { $updated = Invoke-SelfUpdate }
+            catch {
+                # A failed self-update must never block patching Discord
+                Write-Log "Self-update failed (continuing on $ScriptVersion): $($_.Exception.Message)"
+                Remove-Item -Force "$PSCommandPath.new" -ErrorAction SilentlyContinue
+            }
+            if ($updated) {
+                # -NoSelfUpdate on the re-exec makes an update loop structurally impossible
+                $reArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $PSCommandPath,
+                            "-Branch", $Branch, "-NoSelfUpdate")
+                if ($NoLaunch) { $reArgs += "-NoLaunch" }
+                if ($Force) { $reArgs += "-Force" }
+                & (Get-Process -Id $PID).Path @reArgs
+                exit $LASTEXITCODE
+            }
+        }
+
+        Write-Step "3/5" "Downloading latest Vencord installer..."
         Invoke-Download -Uri $installerUrl -OutFile $installerPath
 
-        Write-Step "3/5" "Patching Discord ($Branch branch)..."
+        Write-Step "4/5" "Patching Discord ($Branch branch)..."
         $prev = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
         & $installerPath -install -branch $Branch 2>&1 | ForEach-Object {
@@ -419,10 +478,8 @@ try {
         }
         $patchExit = $LASTEXITCODE
         $ErrorActionPreference = $prev
-        if ($patchExit -ne 0) { throw "Installer exited with code $patchExit" }
-
-        Write-Step "4/5" "Cleaning up..."
         Remove-Item -Force $installerPath -ErrorAction SilentlyContinue
+        if ($patchExit -ne 0) { throw "Installer exited with code $patchExit" }
     }
 }
 catch {
@@ -440,13 +497,28 @@ if ($NoLaunch) {
 }
 else {
     Write-Step "5/5" "Launching Discord ($Branch)..."
-    $updater = "$env:LOCALAPPDATA\$dirName\Update.exe"
+    $updater = "$discordDir\Update.exe"
     if (Test-Path $updater) {
-        Start-Process -FilePath $updater -ArgumentList "--processStart", "$dirName.exe"
+        $launchArgs = @("--processStart", "$dirName.exe")
+        $startArgs = Get-DiscordStartArgs $dirName
+        if ($startArgs) {
+            $launchArgs += "--process-start-args", "`"$startArgs`""
+            Write-Log "Discord start flags: $startArgs"
+        }
+        Start-Process -FilePath $updater -ArgumentList $launchArgs
     }
     else {
         Write-Warning "$dirName Update.exe not found. Is that Discord branch installed?"
         Write-Log "WARN: $updater not found"
+    }
+}
+
+if ($patched -and -not $NoSelfUpdate) {
+    # Discord is already open, so a slow network costs nothing here; the update applies next login
+    try { Invoke-SelfUpdate | Out-Null }
+    catch {
+        Write-Log "Self-update failed (staying on $ScriptVersion): $($_.Exception.Message)"
+        Remove-Item -Force "$PSCommandPath.new" -ErrorAction SilentlyContinue
     }
 }
 

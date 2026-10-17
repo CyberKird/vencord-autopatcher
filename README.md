@@ -10,15 +10,21 @@ Runs on **Windows**, **Linux**, and **macOS**.
 
 ## How it works
 
-1. Updates itself if a newer patcher release exists, then restarts
-2. Pulls the latest Vencord installer from the [official releases](https://github.com/Vencord/Installer)
-3. Runs it against your local Discord install
-4. Deletes the installer binary after patching
+1. Checks whether Discord is still patched
+2. If it isn't: updates itself if a newer patcher release exists, then restarts
+3. Pulls the latest Vencord installer from the [official releases](https://github.com/Vencord/Installer)
+4. Runs it against your local Discord install and deletes it afterwards
 5. Starts Discord
 
-On Windows it first checks whether Discord is still patched. Most logins Discord hasn't updated, so steps 2 to 4 are skipped and Discord opens right away. Pass `-Force` to patch anyway.
+Most logins Discord hasn't updated, so steps 2 to 4 are skipped and Discord opens right away, without touching the network. The self-update check then runs after Discord is already open. Pass `-Force` (`-f` on Linux / macOS) to patch anyway.
 
-If patching fails (no network at login, GitHub down), Discord still opens, just without Vencord, and a Windows notification tells you so. The details are in the log.
+If patching fails (no network at login, GitHub down), Discord still opens, just without Vencord, and a desktop notification tells you so. The details are in the log.
+
+A few things it handles so you don't have to:
+
+- **Discord already open and updating** (Windows): if Discord is unpacking an update when the patcher runs, it waits for that to finish instead of killing Discord halfway through.
+- **Your Discord launch flags** (Windows): flags on Discord's own startup entry, like start minimized or `--enable-skia-graphite`, are passed on when the patcher opens Discord.
+- **Package manager upgrades** (Linux): a deb/rpm upgrade leaves the old `_app.asar` behind, which would make the Vencord installer put the outdated Discord back. The patcher removes that leftover first.
 
 ## Quick start
 
@@ -107,7 +113,7 @@ chmod +x vencord-autopatcher.sh
 | Branch | `-Branch` | `-b` | `stable`, `canary`, or `ptb` | `stable` |
 | Skip launch | `-NoLaunch` | `-n` | Patch only, don't start Discord | off |
 | Skip self-update | `-NoSelfUpdate` | `-u` | Don't check for a newer patcher | off |
-| Always patch | `-Force` | (always) | Patch even if Discord still looks patched | off |
+| Always patch | `-Force` | `-f` | Patch even if Discord still looks patched | off |
 | Install / upgrade | `-Install` | (manual, see above) | Copy to `%LOCALAPPDATA%` and add to startup | (none) |
 | Uninstall | `-Uninstall` | (manual, see below) | Remove the patcher, restore Discord's startup entry | (none) |
 | Version | `-Version` | `-V` | Print the patcher version | (none) |
@@ -134,10 +140,12 @@ Before overwriting itself it syntax-checks the download, so a half-finished down
 | Platform | Dependencies |
 |----------|-------------|
 | **Windows** | PowerShell 5.1+ (built-in) |
-| **Linux** | bash 4+, `curl` |
-| **macOS** | bash, `curl`, `unzip` (all built-in) |
+| **Linux** | bash, `curl` |
+| **macOS** | bash, `curl` (both built-in) |
 
-Standard install location required. Flatpak, Snap, and similar are handled by the Vencord installer itself.
+Standard install location required. Flatpak is handled by the Vencord installer itself; Snap is not supported by Vencord.
+
+On Linux, a system-wide Discord (deb, rpm, `/opt`) belongs to root, so patching it at login fails with a notification. Run the patcher once with `sudo` when that happens, or use a Discord install your user owns (Flatpak, tar.gz in your home folder).
 
 ## Why?
 
