@@ -52,11 +52,12 @@ The script goes into `%LOCALAPPDATA%\VencordAutoPatcher\` and runs silently at e
 4. Right-click → **New → Shortcut**
 5. Paste this:
    ```
-   powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\VencordAutoPatcher\Vencord-AutoPatcher.ps1"
+   conhost.exe --headless powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\VencordAutoPatcher\Vencord-AutoPatcher.ps1"
    ```
+   (`conhost --headless` keeps any console window from flashing up at login. On Windows 10 older than 1809, drop the `conhost.exe --headless` part.)
 6. Click Next, name it, Finish.
 
-**Verify it works** by double-clicking the shortcut. Discord should open with Vencord active. It runs hidden, so no window appears.
+**Verify it works** by double-clicking the shortcut. Discord should open with Vencord active. It runs hidden, so no window appears, not even for a moment. Installs from older versions switch to this on their next run.
 
 Logs are at:
 - **Windows**: `%TEMP%\VencordAutoPatcher.log`

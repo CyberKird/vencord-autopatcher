@@ -77,7 +77,7 @@ param(
     [switch]$Help
 )
 
-$ScriptVersion = "1.6.0"
+$ScriptVersion = "1.6.1"
 $BranchGiven = $PSBoundParameters.ContainsKey("Branch")
 
 if ($Version) { Write-Host "Vencord Auto-Patcher $ScriptVersion"; exit 0 }
@@ -275,6 +275,26 @@ function Set-StartupEnabled {
     Set-ItemProperty -Path $approvedKey -Name $Name -Value $data -Type Binary
 }
 
+# powershell.exe -WindowStyle Hidden still flashes a console, or a whole Windows Terminal
+# window where that is the default terminal. A headless conhost never shows one at all.
+$conhost = Join-Path $env:SystemRoot "System32\conhost.exe"
+$headless = [Environment]::OSVersion.Version.Build -ge 17763 -and (Test-Path $conhost)  # 1809+
+
+function Set-StartupShortcut {
+    param([string]$Path, [string]$PsArgs)
+    $sc = (New-Object -ComObject WScript.Shell).CreateShortcut($Path)
+    if ($headless) {
+        $sc.TargetPath = $conhost
+        $sc.Arguments = "--headless powershell.exe $PsArgs"
+    }
+    else {
+        $sc.TargetPath = "powershell.exe"
+        $sc.Arguments = $PsArgs
+        $sc.WindowStyle = 7  # starts minimized, so the moment before it hides stays off screen
+    }
+    $sc.Save()
+}
+
 function Install-Patcher {
     $target = Join-Path $installerDir "Vencord-AutoPatcher.ps1"
 
@@ -305,10 +325,7 @@ function Install-Patcher {
     if ($noLaunch) { $runArgs += " -NoLaunch" }
     if ($noSelf) { $runArgs += " -NoSelfUpdate" }
 
-    $sc = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $startupDir $lnkName))
-    $sc.TargetPath = "powershell.exe"
-    $sc.Arguments = $runArgs
-    $sc.Save()
+    Set-StartupShortcut (Join-Path $startupDir $lnkName) $runArgs
 
     # Old entries are removed only after the new one exists, so a failure never leaves nothing
     $existing | Where-Object { $_.Name -ne $lnkName } |
@@ -401,6 +418,12 @@ if ($SelfTest) {
         Assert (Test-DiscordUnpacking $fake) 'fresh build without app.asar is still unpacking'
         $half.Parent.CreationTime = (Get-Date).AddHours(-1)
         Assert (-not (Test-DiscordUnpacking $fake)) 'old broken build does not stall the run'
+
+        Set-StartupShortcut "$fake\test.lnk" '-NoProfile -File "x\Vencord-AutoPatcher.ps1" -Branch ptb'
+        $lnk = (New-Object -ComObject WScript.Shell).CreateShortcut("$fake\test.lnk")
+        Assert ($lnk.Arguments -match '-File "x\\Vencord-AutoPatcher\.ps1" -Branch ptb$') 'startup entry keeps the patcher flags'
+        if ($headless) { Assert ($lnk.TargetPath -eq $conhost -and $lnk.Arguments -like '--headless powershell.exe *') 'startup entry runs in a headless console' }
+        else { Assert ($lnk.WindowStyle -eq 7) 'startup entry starts minimized' }
     }
     finally { Remove-Item -Recurse -Force $fake -ErrorAction SilentlyContinue }
 
@@ -512,6 +535,20 @@ else {
         Write-Log "WARN: $updater not found"
     }
 }
+
+# Startup entries from before 1.6.1 run powershell.exe directly and flash a window at login.
+# Self-update never reruns -Install, so move them to the headless console here.
+try {
+    $lnkPath = Join-Path $startupDir $lnkName
+    if ($headless -and (Test-Path $lnkPath)) {
+        $old = (New-Object -ComObject WScript.Shell).CreateShortcut($lnkPath)
+        if ($old.TargetPath -match 'powershell\.exe$' -and $old.Arguments -match 'Vencord-AutoPatcher\.ps1') {
+            Set-StartupShortcut $lnkPath $old.Arguments
+            Write-Log "Startup entry now runs in a headless console (no window at login)"
+        }
+    }
+}
+catch { Write-Log "Could not update the startup entry: $($_.Exception.Message)" }
 
 if ($patched -and -not $NoSelfUpdate) {
     # Discord is already open, so a slow network costs nothing here; the update applies next login
