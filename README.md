@@ -8,7 +8,7 @@ Every Discord update wipes Vencord; this re-patches it on login so you stop cari
 
 Runs on **Windows**, **Linux**, and **macOS**.
 
-[![Support me on Ko-fi](https://raw.githubusercontent.com/CyberKird/.github/main/assets/ko-fi-button.svg)](https://ko-fi.com/joltarise)
+<a href="https://ko-fi.com/joltarise"><img src="https://raw.githubusercontent.com/CyberKird/.github/main/assets/ko-fi-button.svg" alt="Support me on Ko-fi" width="200"></a>
 
 ## How it works
 
