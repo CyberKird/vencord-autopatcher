@@ -8,6 +8,8 @@ Every Discord update wipes Vencord; this re-patches it on login so you stop cari
 
 Runs on **Windows**, **Linux**, and **macOS**.
 
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/joltarise)
+
 ## How it works
 
 1. Checks whether Discord is still patched
